@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\helper;
 use App\Models\DetailOrder;
 use App\Models\Order;
 use Illuminate\Http\Request;
@@ -27,21 +28,27 @@ class OrderController extends Controller
             'harga'     => 'required|numeric'
         ]);
         if ($validator->fails()) {
-            # code...
             return response()->json(['code' => 400, 'status' => false, 'messages' => $validator->errors()]);
+        }
+
+        // Model Recognition
+        $model = helper::pregmatch(strtoupper($request->model));
+        // End Model Recognition
+
+        if (!$model) {
+            $model = $request->model;
         }
 
         DB::beginTransaction();
 
         try {
-            $data = Order::where('model', strtoupper($request->model))->first();
+            $data = Order::where('model', strtoupper($model))->first();
 
-            // dd($data);
             if ($data == NULL) {
                 $order = Order::create([
-                    'model'         => strtoupper($request->model),
+                    'model'         => strtoupper($model),
                     'ordered_qty'   => $request->quantity,
-                    'average_price' => ($request->harga / 100) * count($request->harga),
+                    'average_price' => $request->harga,
                 ]);
 
                 DetailOrder::create([
@@ -55,7 +62,7 @@ class OrderController extends Controller
 
                 return response()->json(['code' => 201, 'status' => true, 'messages' => 'Berhasil Menambahkan Data']);
             } else {
-                $order = Order::where('model', strtoupper($request->model))->update([
+                $order = Order::where('model', strtoupper($model))->update([
                     'ordered_qty'   => ($data->ordered_qty + $request->quantity),
                     'average_price' => ($request->harga / 100) * 1,
                 ]);
@@ -78,12 +85,18 @@ class OrderController extends Controller
 
     public function AddCurrentQty(Request $request)
     {
-        // 
-        // dd($request->all());
+        // Model Recognition
+        $model = helper::pregmatch(strtoupper($request->model));
+        // Model Recognition
 
-        $order = Order::where('model', strtoupper($request->model))->first();
-        if ($order->ordered_qty == 0) {
-            # code...
+        if (!$model) {
+            $model = $request->model;
+        }
+
+        $order = Order::where('model', strtoupper($model))->first();
+
+        if ($order->ordered_qty != 0) {
+
             DB::beginTransaction();
 
             try {
@@ -95,32 +108,25 @@ class OrderController extends Controller
                 $detail = DetailOrder::where('order_id', $order->id)->get();
 
                 $index = $request->current_qty;
-                // dd($index);
+
                 foreach ($detail as $item) {
                     // 
                     $detailData = DetailOrder::where('id', $item->id)->first();
 
-                    // dd($index);
-                    // dd($detailData->qty);
                     if ($index >= $detailData->qty) {
                         $detailData->delete();
                         $index = ($index - $detailData->qty);
-                        // dd($index);
-                        // dd($index . 'xx');
 
                         if ($index == 0) {
-                            # code...
                             DB::commit();
                             return response()->json(['code' => 201, 'status' => true, 'messages' => 'Berhasil Mengubah Data']);
                         }
                     } else {
 
-                        // dd($detailData->id . $detailData->qty - $index);
                         $detailData->update(['qty' => ($detailData->qty - $index)]);
                         $index = ($index - $detailData->qty);
-                        // dd($index . "------" . $detailData->qty);
+
                         if ($index == 0) {
-                            # code...
                             DB::commit();
                             return response()->json(['code' => 201, 'status' => true, 'messages' => 'Berhasil Mengubah Data']);
                         }
@@ -131,18 +137,48 @@ class OrderController extends Controller
 
                 return response()->json(['code' => 201, 'status' => true, 'messages' => 'Berhasil Mengubah Data']);
             } catch (\Throwable $th) {
-                //throw $th;
-                // dd($th);
                 DB::rollBack();
                 return response()->json(['code' => 400, 'status' => false, 'messages' => $th]);
             }
         } else {
             $order->update([
-                'current_qty'   => $order->current_qty + $request->current_qty,
+                'current_qty'   => ($order->current_qty + $request->current_qty),
             ]);
 
             return response()->json(['code' => 201, 'status' => true, 'messages' => 'Berhasil Mengubah Data']);
         }
     }
-    // dd($order);
+
+    public function updateInventory(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'inventory_id'      => 'required|numeric|exists:Orders,id',
+            'category'          => 'required',
+            'average_price'     => 'required',
+        ]);
+        if ($validator->fails()) {
+            # code...
+            return response()->json(['code' => 400, 'status' => false, 'messages' => $validator->errors()]);
+        }
+
+        $data = collect(request()->except('inventory_id'))->filter()->all();
+
+        // dd($data);
+        Order::where('id', $request->inventory_id)->update($data);
+
+        return response()->json(['code' => 201, 'status' => true, 'messages' => 'Berhasil Mengubah Data']);
+    }
+
+    public function deleteInventory(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'inventory_id'      => 'required|numeric|exists:Orders,id',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['code' => 400, 'status' => false, 'messages' => $validator->errors()]);
+        }
+
+        Order::where('id', $request->inventory_id)->delete();
+        return response()->json(['code' => 201, 'status' => true, 'messages' => 'Berhasil Menghapus Data']);
+    }
 }

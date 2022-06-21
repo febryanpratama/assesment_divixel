@@ -29,5 +29,10 @@ Route::controller(OrderController::class)->group(function () {
         Route::get('/');
         Route::post('/', 'AddCurrentQty');
     });
+    Route::prefix('inventory')->group(function () {
+        Route::post('/update', 'updateInventory');
+        Route::post('/delete', 'deleteInventory');
+        // Route::post('/', 'AddCurrentQty');
+    });
 });
 // Route::get('order_qty')
